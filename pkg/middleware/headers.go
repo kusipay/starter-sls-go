@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"reflect"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/mefellows/vesper"
@@ -42,23 +41,14 @@ func HeadersMiddleware(headers ...string) vesper.Middleware {
 
 			var newresp any
 
-			t := reflect.TypeOf(response)
-			if t.Kind() == reflect.Pointer {
-				t = t.Elem()
-			}
+			switch v := response.(type) {
+			case *events.APIGatewayProxyResponse:
+				temp := addHeaders(*v, headers...)
 
-			if t.Kind() == reflect.Struct && t.ConvertibleTo(reflect.TypeOf(events.APIGatewayProxyResponse{})) {
-				resp := reflect.ValueOf(response).Convert(reflect.TypeOf(events.APIGatewayProxyResponse{})).
-					Interface().(events.APIGatewayProxyResponse)
-
-				temp := addHeaders(resp)
-
-				if t.Kind() == reflect.Pointer {
-					newresp = &temp
-				} else {
-					newresp = temp
-				}
-			} else {
+				newresp = &temp
+			case events.APIGatewayProxyResponse:
+				newresp = addHeaders(v)
+			default:
 				newresp = response
 			}
 
