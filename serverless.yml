@@ -1,0 +1,103 @@
+service: starter-sls-go
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: provided.al2
+  architecture: arm64
+  region: ${env:AWS_REGION}
+  stage: ${env:STAGE}
+  httpApi:
+    cors: true
+    name: ${self:service}-${self:provider.stage}
+  environment:
+    ENV_SERVICE: ${self:service}
+    ENV_REGION: ${self:provider.region}
+    ENV_STAGE: ${self:provider.stage}
+    QUEUE: ${self:custom.resources.queueName}
+    TABLE: ${self:custom.resources.tableName}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - lambda:*
+            - s3:*
+            - dynamodb:*
+            - ssm:*
+            - sqs:*
+          Resource: "*"
+
+package:
+  individually: true
+
+custom:
+  version: "v1"
+  resources:
+    queueName: ${self:service}-${self:provider.stage}-queue
+    queueDlqName: ${self:service}-${self:provider.stage}-queueDlq
+    tableName: ${self:service}-${self:provider.stage}-table
+
+functions:
+  another:
+    handler: bootstrap
+    package:
+      artifact: bin/another.zip
+  test:
+    handler: bootstrap
+    package:
+      artifact: bin/test.zip
+    events:
+      - httpApi:
+          method: POST
+          path: /${self:custom.version}/test
+  init:
+    handler: bootstrap
+    package:
+      artifact: bin/init.zip
+    events:
+      - httpApi:
+          method: POST
+          path: /${self:custom.version}/init
+  process:
+    handler: bootstrap
+    package:
+      artifact: bin/process.zip
+    events:
+      - sqs:
+          arn: !GetAtt Queue.Arn
+          batchSize: 3
+  processdlq:
+    handler: bootstrap
+    package:
+      artifact: bin/processdlq.zip
+    events:
+      - sqs:
+          arn: !GetAtt QueueDlq.Arn
+          batchSize: 3
+
+resources:
+  Resources:
+    Queue:
+      Type: "AWS::SQS::Queue"
+      Properties:
+        QueueName: ${self:custom.resources.queueName}
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt QueueDlq.Arn
+          maxReceiveCount: 2
+    QueueDlq:
+      Type: "AWS::SQS::Queue"
+      Properties:
+        QueueName: ${self:custom.resources.queueDlqName}
+    Table:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        TableName: ${self:custom.resources.tableName}
+        AttributeDefinitions:
+          - AttributeName: "id"
+            AttributeType: "S"
+        KeySchema:
+          - AttributeName: "id"
+            KeyType: "HASH"
+        BillingMode: "PAY_PER_REQUEST"
