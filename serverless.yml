@@ -34,6 +34,7 @@ package:
 
 custom:
   version: "v1"
+  prefix: ${self:service}-${self:provider.stage}
   resources:
     queueName: ${self:service}-${self:provider.stage}-queue
     queueDlqName: ${self:service}-${self:provider.stage}-queueDlq
